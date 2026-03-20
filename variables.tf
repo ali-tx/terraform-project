@@ -5,11 +5,11 @@ variable "aws_region" {
 }
 
 variable "project_name" {
-  description = "The name of your startup"
+  description = "terraform"
   type        = string
 }
 
 variable "environment" {
-  description = "Deployment environment (e.g., dev, prod)"
+  description = "dev"
   type        = string
 }

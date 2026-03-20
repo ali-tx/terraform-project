@@ -41,6 +41,7 @@ module "alb" {
       protocol         = "HTTP"
       port             = 80
       target_type      = "instance"
+      create_attachment = false
       health_check = {
         enabled             = true
         interval            = 30
