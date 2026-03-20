@@ -1,0 +1,92 @@
+name: 'Terraform Plan'
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    name: 'Terraform'
+    runs-on: ubuntu-latest
+    environment: production
+
+    # Use defaults to sets the working directory to the terraform directory if needed
+    # defaults:
+    #   run:
+    #     working-directory: ./terraform
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Needed for checking changed files
+
+    - name: Check for CHANGELOG only changes
+      id: changelog_check
+      run: |
+        CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+        if [[ "$CHANGED_FILES" == "CHANGELOG.md" ]]; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Determine Plan Scope
+      id: scope
+      run: |
+        CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+        echo "files=$CHANGED_FILES"
+        
+        if echo "$CHANGED_FILES" | grep -q "global/iam"; then
+          echo "target=all" >> $GITHUB_OUTPUT
+        elif echo "$CHANGED_FILES" | grep -q "apps/payment-api"; then
+          echo "target=payment-api" >> $GITHUB_OUTPUT
+        else
+          echo "target=default" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Setup Terraform
+      if: steps.changelog_check.outputs.skip != 'true'
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+
+    - name: Terraform Init
+      if: steps.changelog_check.outputs.skip != 'true'
+      run: terraform init
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    - name: Terraform Plan
+      if: steps.changelog_check.outputs.skip != 'true'
+      id: plan
+      run: |
+        TARGET="${{ steps.scope.outputs.target }}"
+        if [ "$TARGET" == "payment-api" ]; then
+          # In a real scenario, this would be a specific command or -target
+          # For this example, we'll just run a specific plan if possible
+          terraform plan -no-color -out=tfplan
+        elif [ "$TARGET" == "all" ]; then
+          # Run all plans (assuming multiple modules or directories)
+          terraform plan -no-color -out=tfplan
+        else
+          terraform plan -no-color -out=tfplan
+        fi
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    - name: Publish Plan to Job Summary
+      if: steps.changelog_check.outputs.skip != 'true'
+      run: |
+        echo "### Terraform Plan Output" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`terraform" >> $GITHUB_STEP_SUMMARY
+        terraform show -no-color tfplan >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
